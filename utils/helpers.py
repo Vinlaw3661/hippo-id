@@ -69,6 +69,7 @@ class StorageMode(Enum):
     CHROMA = "Chroma"
     DEEPFACE = "DeepFace"
 
+#--------------------------UTILITY-FUNCTIONS--------------------------
 
 # ChoromaDB embedding functions
 def create_face_embedding(img_path: str) -> np.ndarray:
@@ -107,7 +108,49 @@ def record_audio(duration: int = 5, file_name: str = "audio.wav", save_directory
     write(audio_path, fs, audio)
 
     print(f"Audio saved to {audio_path}")
+    
     return audio_path
+
+# Facial segmentation function
+def segment_faces(img: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    mp_face_mesh = mp.solutions.face_mesh
+    face_mesh = mp_face_mesh.FaceMesh(static_image_mode=True)
+    rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    height, width, _ = img.shape
+    results = face_mesh.process(rgb_img)
+    mask = np.zeros((height,width), dtype=np.uint8)
+    segmented_faces = []
+    face_paths = []
+
+    if results.multi_face_landmarks:
+        for face_id,face_landmarks in enumerate(results.multi_face_landmarks):
+            # Get the coordinates of the landmarks
+            points = []
+            for landmark in face_landmarks.landmark:
+                x = int(landmark.x * width)
+                y = int(landmark.y * height)
+                points.append((x, y))
+
+            # Create a convex hull around the face landmarks
+            points = np.array(points, dtype=np.int32)
+            convex_hull = cv2.convexHull(points)
+            cv2.fillConvexPoly(mask, convex_hull, 255)
+
+            masked_face = cv2.bitwise_and(img, img, mask=mask)
+            ouput_path = f"outputs/masks/face_{face_id}/masked_image_{face_id}.png"
+            os.makedirs(os.path.dirname(ouput_path), exist_ok=True)
+            cv2.imwrite(ouput_path, masked_face)
+            segmented_faces.append(masked_face)
+            face_paths.append(ouput_path)
+
+        segmented_faces = np.array(segmented_faces)
+        face_paths = np.array(face_paths)
+        
+        return segmented_faces, face_paths
+
+    else:
+        raise Exception("No faces detected")
+    
 
 
 #--------------------------FACE RECOGNITION--------------------------
@@ -151,8 +194,9 @@ def is_known_face_deepface(face_path: str, database_path: str) -> tuple[bool, st
     else:
         return False, FaceState.UNDETECTED
     
+    
 
-#--------------------------PERSON DESCRIPTION--------------------------
+#--------------------------PERSON DESCRIPTION & NAME ASKING--------------------------
 
 # Function to describe a person if they are not known
 def describe_person(img_path:str) -> str:
@@ -253,3 +297,4 @@ def acknowledge_person(name:str):
 
     stream(audio_stream)
     return 
+
