@@ -22,9 +22,6 @@ from elevenlabs import stream, VoiceSettings
 from scipy.io.wavfile import write
 from utils.helpers import record_audio
 
-
-# Initialize settings
-
     
 # Load environment variables and set up API keys
 load_dotenv()
@@ -111,46 +108,47 @@ def record_audio(duration: int = 5, file_name: str = "audio.wav", save_directory
     
     return audio_path
 
-# Facial segmentation function
-def segment_faces(img: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    mp_face_mesh = mp.solutions.face_mesh
-    face_mesh = mp_face_mesh.FaceMesh(static_image_mode=True)
-    rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+# Face segmentation function
+def segment_faces(img: np.ndarray, image_save_path: str = "./outputs/faces") -> tuple[np.ndarray,str, bool]:
+    # Initialize MediaPipe Face Detection
+    mp_face_detection = mp.solutions.face_detection
+    face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
+
+ 
     height, width, _ = img.shape
-    results = face_mesh.process(rgb_img)
-    mask = np.zeros((height,width), dtype=np.uint8)
-    segmented_faces = []
-    face_paths = []
 
-    if results.multi_face_landmarks:
-        for face_id,face_landmarks in enumerate(results.multi_face_landmarks):
-            # Get the coordinates of the landmarks
-            points = []
-            for landmark in face_landmarks.landmark:
-                x = int(landmark.x * width)
-                y = int(landmark.y * height)
-                points.append((x, y))
+    # Detect faces
+    results = face_detection.process(img)
 
-            # Create a convex hull around the face landmarks
-            points = np.array(points, dtype=np.int32)
-            convex_hull = cv2.convexHull(points)
-            cv2.fillConvexPoly(mask, convex_hull, 255)
+    # Check if any face was detected
+    if results.detections:
+        # Process the first detected face
+        detection = results.detections[0]
+        bboxC = detection.location_data.relative_bounding_box
 
-            masked_face = cv2.bitwise_and(img, img, mask=mask)
-            ouput_path = f"outputs/masks/face_{face_id}/masked_image_{face_id}.png"
-            os.makedirs(os.path.dirname(ouput_path), exist_ok=True)
-            cv2.imwrite(ouput_path, masked_face)
-            segmented_faces.append(masked_face)
-            face_paths.append(ouput_path)
+        # Convert bounding box to pixel values
+        x = int(bboxC.xmin * width)
+        y = int(bboxC.ymin * height)
+        w = int(bboxC.width * width)
+        h = int(bboxC.height * height)
 
-        segmented_faces = np.array(segmented_faces)
-        face_paths = np.array(face_paths)
-        
-        return segmented_faces, face_paths
+        # Ensure coordinates are within image bounds
+        x = max(0, x)
+        y = max(0, y)
+        w = min(width - x, w)
+        h = min(height - y, h)
 
+        # Crop the face using the bounding box
+        face_roi = img[y:y+h, x:x+w]
+        ouput_path = f"{image_save_path}/masked_image.png"
+        os.makedirs(os.path.dirname(ouput_path), exist_ok=True)
+
+        return face_roi, ouput_path, True
     else:
-        raise Exception("No faces detected")
-    
+
+        return np.array([]), FaceState.UNDETECTED, False
+
+
 
 
 #--------------------------FACE RECOGNITION--------------------------
@@ -194,7 +192,7 @@ def is_known_face_deepface(face_path: str, database_path: str) -> tuple[bool, st
     else:
         return False, FaceState.UNDETECTED
     
-    
+
 
 #--------------------------PERSON DESCRIPTION & NAME ASKING--------------------------
 
