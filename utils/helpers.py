@@ -182,3 +182,26 @@ def describe_person(img_path:str) -> str:
     response = "Hello Vinlaw! " + llm.invoke([message]).content
 
     return response
+
+def ask_for_name(person_img_path: str, use_elevenlabs: bool = False) -> bool:
+    description = describe_person(person_img_path)
+
+    if use_elevenlabs:
+        audio_stream = voice.text_to_speech.convert_as_stream(
+            text=description,
+            voice_id="pqHfZKP75CvOlQylNhV4",
+            model_id="eleven_multilingual_v2",
+            voice_settings=VoiceSettings(
+                stability=0.5,
+                similarity_boost=0.75,
+                use_speaker_boost=True
+            )
+        )
+        stream(audio_stream)
+    else:
+        engine = pyttsx3.init()
+        engine.say(description)
+        engine.runAndWait()
+        engine.stop()
+
+    return True 
