@@ -68,6 +68,11 @@ class StorageMode(Enum):
 
 #--------------------------UTILITY-FUNCTIONS--------------------------
 
+# Verbose print function
+def verbose_print(text: str, verbose: bool = False) -> None:
+    if verbose:
+        print(text)
+
 # ChoromaDB embedding functions
 def create_face_embedding(img_path: str) -> np.ndarray:
     return DeepFace.represent(img_path=img_path, model_name='Facenet')[0]["embedding"]
