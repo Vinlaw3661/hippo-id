@@ -1,0 +1,184 @@
+import numpy as np 
+import chromadb
+from nanoid import generate
+from enum  import Enum
+import os 
+import cv2
+import time
+import base64
+import mediapipe as mp
+import pyttsx3
+import pandas as pd
+import sounddevice as sd
+import speech_recognition as sr
+import assemblyai as aai
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+from deepface import DeepFace
+from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import HumanMessage
+from elevenlabs.client import ElevenLabs
+from elevenlabs import stream, VoiceSettings
+from scipy.io.wavfile import write
+from utils.helpers import record_audio
+
+
+# Initialize settings
+
+    
+# Load environment variables and set up API keys
+load_dotenv()
+assemblyai_api_key = os.getenv("ASSEMBLYAI_API_KEY")
+anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+
+
+# Set up ChromaDB for persisting embeddings
+chromadb_client = chromadb.PersistentClient()
+collection = chromadb_client.get_or_create_collection("Faces")
+
+# Set up LLM
+llm  = ChatAnthropic(
+    model = "claude-3-5-sonnet-20240620",
+    temperature = 0.5,
+    max_tokens = 1024,
+    timeout = None,
+    max_retries = 2,
+    api_key= anthropic_api_key
+)
+
+# Set up text to speech model
+voice = ElevenLabs(
+    api_key = elevenlabs_api_key
+)
+
+# Set up speech to text model
+aai.settings.api_key = assemblyai_api_key
+transcriber = aai.Transcriber()
+
+
+class PersonName(BaseModel):
+    """Name of person extracted from provided text"""
+    name: str = Field(description="The name of the person")
+
+class FaceState(Enum):
+    UNKNOWN = "Unknown"
+    UNDETECTED = "Undetected"
+
+class StorageMode(Enum):
+    CHROMA = "Chroma"
+    DEEPFACE = "DeepFace"
+
+
+# ChoromaDB embedding functions
+def create_face_embedding(img_path: str) -> np.ndarray:
+    return DeepFace.represent(img_path=img_path, model_name='Facenet')[0]["embedding"]
+
+def store_face_embedding(img_path: str, name: str) -> bool:
+
+    embedding = create_face_embedding(img_path)
+
+    if embedding is None:
+        return False
+    
+    uid = generate(size=7)
+
+    collection.add(
+        embeddings=embedding,
+        metadatas=[{"name": name}],
+        ids=[uid]
+    )
+
+    return True
+
+
+# Audio recording function
+def record_audio(duration: int = 5, file_name: str = "audio.wav", save_directory: str = "./outputs/audio") -> str:
+    fs = 44100
+
+    print(f"Recording audio for {duration} seconds...")
+    audio = sd.rec(int(duration * fs), samplerate=fs, channels=2, dtype='int16')
+    sd.wait()
+    print("Audio recording complete.")
+
+    os.makedirs(save_directory, exist_ok=True)
+
+    audio_path = os.path.join(save_directory, file_name)
+    write(audio_path, fs, audio)
+
+    print(f"Audio saved to {audio_path}")
+    return audio_path
+
+
+
+
+# Function to check if a person is already known using Chroma
+def is_known_face(face_path:str) -> tuple[bool, str]:
+    embedding = create_face_embedding(face_path)
+
+    if embedding is None:
+        return False, FaceState.UNDETECTED
+
+    matches =  collection.query(
+                    query_embeddings=embedding,
+                    n_results=1,
+                )
+    
+    if len(matches["ids"]) == 0:
+        return False, FaceState.UNKNOWN
+    
+    distance = matches["distances"][0][0]
+
+    if distance < 0.55:
+        return True, matches["metadatas"][0][0]["name"]
+    
+# Function to check if a person is already known using DeepFace
+def is_known_face_deepface(face_path: str, database_path: str) -> tuple[bool, str]:
+
+    faces = os.listdir(database_path)
+    if len(faces) == 0:
+        return False, FaceState.UNKNOWN
+    
+    df = DeepFace.find(
+        img_path=face_path,
+        db_path=database_path,
+        model_name='Facenet'
+    )
+    df = df[0]
+    if df.shape[0] > 0:
+        name = df.iloc[0]["identity"].split('\\')[-1].split(".")[0].title()
+        return True, name
+    else:
+        return False, FaceState.UNDETECTED
+    
+
+# Function to describe a person if they are not known
+def describe_person(img_path:str) -> str:
+
+    if not os.path.exists(img_path):
+        raise FileNotFoundError("Image not found")
+
+    with open(img_path, "rb") as f:
+        image_data = base64.b64encode(f.read()).decode("utf-8")
+    
+    prompt = '''Describe what is in the image in a way that a person could understand. Do not include a description of the black background. Frame your response as a question 
+    asking who they are. Here are some examples:
+    
+    Who is the person with the black hair and hazel eyes?
+
+    Who is the person with the blonde hair, blue eyes, and green hoop earrings?
+
+    NOTE: Respond only with the question and nothing else. Do not add any additional text to your response.
+    
+    '''
+
+    message = HumanMessage(
+        content = [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url":f"data:image/png;base64,{image_data}"}}
+        ]
+    )
+
+    response = "Hello Vinlaw! " + llm.invoke([message]).content
+
+    return response
