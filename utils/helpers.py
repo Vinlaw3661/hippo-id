@@ -110,7 +110,7 @@ def record_audio(duration: int = 5, file_name: str = "audio.wav", save_directory
     return audio_path
 
 
-
+#--------------------------FACE RECOGNITION--------------------------
 
 # Function to check if a person is already known using Chroma
 def is_known_face(face_path:str) -> tuple[bool, str]:
@@ -151,6 +151,8 @@ def is_known_face_deepface(face_path: str, database_path: str) -> tuple[bool, st
     else:
         return False, FaceState.UNDETECTED
     
+
+#--------------------------PERSON DESCRIPTION--------------------------
 
 # Function to describe a person if they are not known
 def describe_person(img_path:str) -> str:
@@ -205,3 +207,31 @@ def ask_for_name(person_img_path: str, use_elevenlabs: bool = False) -> bool:
         engine.stop()
 
     return True 
+
+# Function to listen for a person's name
+def listen_for_name(use_assemblyai: bool = False, audio_path: str = "audio.wav", save_directory: str = "./outputs/audio") -> str:
+    structured_llm = llm.with_structured_output(PersonName)
+    
+    if use_assemblyai:
+
+        FILE_URL = record_audio(file_name=audio_path, save_directory=save_directory)
+        transcript = transcriber.transcribe(FILE_URL)
+        if transcript.status == aai.TranscriptStatus.error:
+            raise Exception(f"Unable to transcribe audio: {transcript.error}")
+        else:
+            prompt = "Extract the person's name from the following text: " + transcript.text
+            name = structured_llm.invoke(prompt).name
+            return name.lower()
+
+    else:
+        recognizer = sr.Recognizer()
+        with sr.Microphone() as source:
+            recognizer.adjust_for_ambient_noise(source)
+            audio = recognizer.listen(source, phrase_time_limit = 5)
+        try:
+            text =  recognizer.recognize_google(audio)
+            prompt = "Extract the person's name from the following text: " + text
+            name = structured_llm.invoke(prompt).name
+            return name.lower()
+        except sr.UnknownValueError as e:
+            raise Exception(f"Unable to recognize voice: {e}")
