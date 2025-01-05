@@ -181,7 +181,7 @@ def describe_person(img_path:str) -> str:
         ]
     )
 
-    response = "Hello Vinlaw! " + llm.invoke([message]).content
+    response = "Hello! " + llm.invoke([message]).content
 
     return response
 
@@ -235,3 +235,21 @@ def listen_for_name(use_assemblyai: bool = False, audio_path: str = "audio.wav",
             return name.lower()
         except sr.UnknownValueError as e:
             raise Exception(f"Unable to recognize voice: {e}")
+
+# Function to acknowledge a person's introduction
+def acknowledge_person(name:str):
+
+    text = f"Thank you for introducing me to {name}! It's a pleasure to meet you {name}. I will make sure to remember you the next time we meet."
+    audio_stream = voice.text_to_speech.convert_as_stream(
+        text=text,
+        voice_id="pqHfZKP75CvOlQylNhV4",
+        model_id="eleven_multilingual_v2",
+        voice_settings=VoiceSettings(
+            stability=0.5,
+            similarity_boost=0.75,
+            use_speaker_boost=True
+        )
+    )
+
+    stream(audio_stream)
+    return 
