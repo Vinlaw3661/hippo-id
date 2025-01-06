@@ -1,10 +1,8 @@
 import numpy as np 
-import chromadb
 from nanoid import generate
 from enum  import Enum
 import os 
 import cv2
-import time
 import base64
 import mediapipe as mp
 import pyttsx3
@@ -12,46 +10,18 @@ import pandas as pd
 import sounddevice as sd
 import speech_recognition as sr
 import assemblyai as aai
-from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from deepface import DeepFace
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage
-from elevenlabs.client import ElevenLabs
 from elevenlabs import stream, VoiceSettings
 from scipy.io.wavfile import write
-from utils.helpers import record_audio
+from utils.settings import (
+                            llm,
+                            voice,
+                            collection,
+                            transcriber
+                        )
 
-    
-# Load environment variables and set up API keys
-load_dotenv()
-assemblyai_api_key = os.getenv("ASSEMBLYAI_API_KEY")
-anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-
-
-# Set up ChromaDB for persisting embeddings
-chromadb_client = chromadb.PersistentClient()
-collection = chromadb_client.get_or_create_collection("Faces")
-
-# Set up LLM
-llm  = ChatAnthropic(
-    model = "claude-3-5-sonnet-20240620",
-    temperature = 0.5,
-    max_tokens = 1024,
-    timeout = None,
-    max_retries = 2,
-    api_key= anthropic_api_key
-)
-
-# Set up text to speech model
-voice = ElevenLabs(
-    api_key = elevenlabs_api_key
-)
-
-# Set up speech to text model
-aai.settings.api_key = assemblyai_api_key
-transcriber = aai.Transcriber()
 
 
 class PersonName(BaseModel):
@@ -68,6 +38,10 @@ class StorageMode(Enum):
 
 #--------------------------UTILITY-FUNCTIONS--------------------------
 
+#Cosine Similarity function
+def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
 # Verbose print function
 def verbose_print(text: str, verbose: bool = False) -> None:
     if verbose:
@@ -75,7 +49,11 @@ def verbose_print(text: str, verbose: bool = False) -> None:
 
 # ChoromaDB embedding functions
 def create_face_embedding(img_path: str) -> np.ndarray:
-    return DeepFace.represent(img_path=img_path, model_name='Facenet')[0]["embedding"]
+    try:
+        embedding = DeepFace.represent(img_path=img_path, model_name='Facenet')[0]["embedding"]
+        return embedding
+    except ValueError as e:
+        return None
 
 def store_face_embedding(img_path: str, name: str) -> bool:
 
@@ -147,7 +125,7 @@ def segment_faces(img: np.ndarray, image_save_path: str = "./outputs/faces") -> 
         face_roi = img[y:y+h, x:x+w]
         ouput_path = f"{image_save_path}/masked_image.png"
         os.makedirs(os.path.dirname(ouput_path), exist_ok=True)
-
+        cv2.imwrite(ouput_path, face_roi)
         return face_roi, ouput_path, True
     else:
 
@@ -168,15 +146,23 @@ def is_known_face(face_path:str) -> tuple[bool, str]:
     matches =  collection.query(
                     query_embeddings=embedding,
                     n_results=1,
+                    include=["embeddings", "metadatas", "distances"]
+                    
                 )
     
-    if len(matches["ids"]) == 0:
-        return False, FaceState.UNKNOWN
+ 
     
-    distance = matches["distances"][0][0]
+    if len(matches["ids"][0]) == 0:
+        return False, FaceState.UNKNOWN
 
+    matched_embedding = matches["embeddings"][0][0]
+    distance = 1 - cosine_similarity(embedding, matched_embedding)
+    
+    print(distance)
     if distance < 0.55:
         return True, matches["metadatas"][0][0]["name"]
+    
+    return False, FaceState.UNKNOWN
     
 # Function to check if a person is already known using DeepFace
 def is_known_face_deepface(face_path: str, database_path: str) -> tuple[bool, str]:
