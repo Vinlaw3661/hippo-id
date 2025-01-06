@@ -10,6 +10,7 @@ from utils.helpers import (
     ask_for_name,
     listen_for_name,
     acknowledge_person,
+    store_face_embedding,
     StorageMode,
     FaceState
 )
@@ -27,14 +28,15 @@ class Hippo:
         self.face_states = [FaceState.UNDETECTED, FaceState.UNKNOWN]
 
     def identify(self, image, verbose: bool = True) -> tuple[np.ndarray, np.ndarray]:
-        
-        verbose_print("---------------------------Starting Light Mode---------------------------------")
+
+        verbose_print("---------------------------Starting Identification---------------------------------")
         verbose_print(f"\nUsing database path: {self.database_path}")
         verbose_print("\nSegmenting faces...")
 
         segmented_face , face_path, face_state = segment_faces(image)
 
         if face_state == FaceState.UNDETECTED:
+
             verbose_print("No faces detected in the image")
             return False, FaceState.UNDETECTED
         
@@ -44,7 +46,7 @@ class Hippo:
         verbose_print(f"\nIdentifying person in {single_face_path}...")
 
         if self.storage_mode == StorageMode.CHROMA:
-            is_known, possible_name = is_known_face(single_face_path, self.database_path)
+            is_known, possible_name = is_known_face(single_face_path)
 
         elif self.storage_mode == StorageMode.DEEPFACE:
             is_known, possible_name = is_known_face_deepface(single_face_path, self.database_path)
@@ -61,10 +63,17 @@ class Hippo:
             verbose_print(f"\nListening for name...")
             name = listen_for_name(self.use_assemblyai, self.audio_path, self.audio_save_directory)
             verbose_print(f"\nName captured as: {name}")
-            identity_path = f"{self.database_path}/{name.lower()}/{name.lower()}.png"
-            verbose_print(f"\nSaving identity at: {identity_path}")
-            os.makedirs(os.path.dirname(identity_path), exist_ok=True)
-            cv2.imwrite(identity_path, single_face)
+
+            if self.storage_mode == StorageMode.CHROMA:
+                verbose_print(f"\nSaving identity to chromadatabase: {self.database_path}")
+                store_face_embedding(single_face_path, name)
+            
+            elif self.storage_mode == StorageMode.DEEPFACE:
+                identity_path = f"{self.database_path}/{name.lower()}/{name.lower()}.png"
+                verbose_print(f"\nSaving identity at: {identity_path}")
+                os.makedirs(os.path.dirname(identity_path), exist_ok=True)
+                cv2.imwrite(identity_path, single_face)
+
             verbose_print("\nIdentity saved!")
             acknowledge_person(name)
             return True, name
