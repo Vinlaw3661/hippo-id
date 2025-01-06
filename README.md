@@ -1,6 +1,6 @@
 # 🦛 Hippo-ID : zero-shot facial recognition at inference
 
-Hippo-ID is a zero-shot facial recognition engine designed for inference and identification. The name "Hippo-ID" is inspired by the hippocampus, the part of the brain responsible for memory, and its mascot is a friendly hippopotamus 🦛. Utilizing advanced tools and models, it can segment faces, identify known individuals, and interactively learn new identities using audio and text-to-speech technologies. Hippo-ID provides seamless database integration and supports real-time recognition through a webcam feed.
+Hippo-ID is a zero-shot facial recognition engine designed for facial identification at inference inspired by the hippocampus, the part of the brain responsible for memory. Its mascot is a friendly hippopotamus 🦛. Utilizing advanced tools and models, it can segment faces, identify known individuals, and interactively learn new identities using audio and text-to-speech technologies. Hippo-ID provides seamless database integration with ChromaDB and supports real-time recognition through a webcam feed.
 
 ## ✨ Features
 
