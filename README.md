@@ -17,7 +17,7 @@ Hippo-ID is a zero-shot facial recognition engine designed for inference and ide
 - Python 3.9+
 - Required Libraries:
   ```
-  pip install numpy opencv-python mediapipe pyttsx3 pandas sounddevice speechrecognition assemblyai deepface langchain-core elevenlabs chromadb nanoid pydantic scipy python-dotenv
+  pip install numpy opencv-python mediapipe pyttsx3 pandas sounddevice SpeechRecognition assemblyai deepface langchain-core langchain-anthropic elevenlabs chromadb nanoid pydantic scipy python-dotenv tf-keras
   ```
 - Supported Models and APIs:
   - ChromaDB
